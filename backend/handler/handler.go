@@ -8,11 +8,13 @@ import (
 
 	"bookhub/auth"
 	"bookhub/store"
+	"bookhub/supastorage"
 )
 
 type Handler struct {
 	Store   *store.Store
 	Tickets *auth.Issuer
+	Storage *supastorage.Client
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -89,4 +91,3 @@ func (h *Handler) ListReviews(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
-
