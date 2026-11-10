@@ -1,6 +1,11 @@
 package main
 
 import (
+	"bookhub/auth"
+	"bookhub/handler"
+	"bookhub/mw"
+	"bookhub/store"
+	"bookhub/supastorage"
 	"context"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -9,11 +14,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"bookhub/auth"
-	"bookhub/handler"
-	"bookhub/mw"
-	"bookhub/store"
 )
 
 func main() {
@@ -35,8 +35,22 @@ func main() {
 	}
 
 	tickets := &auth.Issuer{Secret: []byte(secret), TTL: time.Hour}
-	h := &handler.Handler{Store: &store.Store{Pool: pool}, Tickets: tickets}
-	login := func(f http.HandlerFunc) http.HandlerFunc { return mw.RequireLogin(tickets, f) }
+
+	storage := &supastorage.Client{
+		BaseURL:    os.Getenv("SUPABASE_URL"),
+		ServiceKey: os.Getenv("SUPABASE_SERVICE_ROLE_KEY"),
+		Bucket:     os.Getenv("SUPABASE_STORAGE_BUCKET"),
+	}
+
+	h := &handler.Handler{
+		Store:   &store.Store{Pool: pool},
+		Tickets: tickets,
+		Storage: storage,
+	}
+
+	login := func(f http.HandlerFunc) http.HandlerFunc {
+		return mw.RequireLogin(tickets, f)
+	}
 
 	mux := http.NewServeMux()
 
@@ -75,6 +89,13 @@ func main() {
 	mux.HandleFunc("GET /api/me/wishlist", login(h.GetWishlist))
 	mux.HandleFunc("PUT /api/me/wishlist/{bookId}", login(h.AddToWishlist))
 	mux.HandleFunc("DELETE /api/me/wishlist/{bookId}", login(h.RemoveFromWishlist))
+	mux.HandleFunc("POST /api/me/orders", login(h.CreateOrder))
+	mux.HandleFunc("GET /api/me/orders", login(h.ListMyOrders))
+	mux.HandleFunc("GET /api/me/library", login(h.MyLibrary))
+	// Admin Orders (require login + admin role)
+	mux.HandleFunc("GET /api/admin/orders", login(mw.RequireRole("admin", h.AdminOrders)))
+	mux.HandleFunc("POST /api/admin/orders/{id}/approve", login(mw.RequireRole("admin", h.AdminApproveOrder)))
+	mux.HandleFunc("POST /api/admin/orders/{id}/reject", login(mw.RequireRole("admin", h.AdminRejectOrder)))
 
 	origins := strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",")
 
