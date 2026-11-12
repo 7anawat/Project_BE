@@ -47,12 +47,74 @@ func (s *Store) MemberByEmail(ctx context.Context, email string) (Member, error)
 func (s *Store) MemberByID(ctx context.Context, id int64) (Member, error) {
 	var m Member
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, email, display_name, role FROM members WHERE id = $1`, id).
-		Scan(&m.ID, &m.Email, &m.DisplayName, &m.Role)
+		`SELECT id, email, display_name, role, created_at::text
+         FROM members WHERE id = $1`, id).
+		Scan(&m.ID, &m.Email, &m.DisplayName, &m.Role, &m.CreatedAt)
+
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Member{}, ErrNotFound
 	}
+
 	return m, err
+}
+
+func (s *Store) UpdateMemberProfile(ctx context.Context, memberID int64, email, displayName string) (Member, error) {
+	var m Member
+
+	err := s.Pool.QueryRow(ctx,
+		`UPDATE members
+         SET email = $1, display_name = $2, updated_at = now()
+         WHERE id = $3
+         RETURNING id, email, display_name, role, created_at::text`,
+		email, displayName, memberID,
+	).Scan(&m.ID, &m.Email, &m.DisplayName, &m.Role, &m.CreatedAt)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Member{}, ErrNotFound
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return Member{}, ErrEmailTaken
+	}
+
+	return m, err
+}
+
+// ดึง Password Hash ปัจจุบันของสมาชิก
+func (s *Store) MemberPasswordHashByID(ctx context.Context, memberID int64) (string, error) {
+	var hash string
+
+	err := s.Pool.QueryRow(ctx,
+		`SELECT password_hash FROM members WHERE id = $1`,
+		memberID,
+	).Scan(&hash)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+
+	return hash, err
+}
+
+// บันทึก Password Hash ใหม่
+func (s *Store) UpdateMemberPasswordHash(ctx context.Context, memberID int64, passwordHash string) error {
+	tag, err := s.Pool.Exec(ctx,
+		`UPDATE members
+         SET password_hash = $1, updated_at = now()
+         WHERE id = $2`,
+		passwordHash, memberID,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+
+	return nil
 }
 
 func (s *Store) ListMembers(ctx context.Context) ([]Member, error) {

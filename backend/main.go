@@ -58,6 +58,9 @@ func main() {
 	mux.HandleFunc("POST /api/auth/register", h.Register)
 	mux.HandleFunc("POST /api/auth/login", h.Login)
 	mux.HandleFunc("GET /api/me", login(h.Me))
+	// Profile (require login)
+	mux.HandleFunc("PUT /api/me/profile", login(h.UpdateMyProfile))
+	mux.HandleFunc("PUT /api/me/password", login(h.ChangeMyPassword))
 
 	// Books (public)
 	mux.HandleFunc("GET /api/books", h.SearchBooks)
