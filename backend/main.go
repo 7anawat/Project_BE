@@ -41,6 +41,9 @@ func main() {
 		ServiceKey: os.Getenv("SUPABASE_SERVICE_ROLE_KEY"),
 		Bucket:     os.Getenv("SUPABASE_STORAGE_BUCKET"),
 	}
+	// ตรวจสอบว่า Backend โหลดค่า Supabase ถูกต้อง
+	log.Println("Supabase URL:", storage.BaseURL)
+	log.Println("Storage Bucket:", storage.Bucket)
 
 	h := &handler.Handler{
 		Store:   &store.Store{Pool: pool},
@@ -61,6 +64,7 @@ func main() {
 	// Profile (require login)
 	mux.HandleFunc("PUT /api/me/profile", login(h.UpdateMyProfile))
 	mux.HandleFunc("PUT /api/me/password", login(h.ChangeMyPassword))
+	mux.HandleFunc("POST /api/me/avatar", login(h.UploadMyAvatar))
 
 	// Books (public)
 	mux.HandleFunc("GET /api/books", h.SearchBooks)

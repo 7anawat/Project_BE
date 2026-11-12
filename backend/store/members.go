@@ -16,7 +16,9 @@ type Member struct {
 	DisplayName  string `json:"displayName"`
 	Role         string `json:"role"`
 	CreatedAt    string `json:"createdAt,omitempty"`
-	PasswordHash string `json:"-"` // ไม่มีวันออกไปกับ JSON
+	AvatarPath   string `json:"-"`
+	AvatarURL    string `json:"avatarUrl,omitempty"`
+	PasswordHash string `json:"-"`
 }
 
 func (s *Store) CreateMember(ctx context.Context, email, hash, name string) (Member, error) {
@@ -34,22 +36,41 @@ func (s *Store) CreateMember(ctx context.Context, email, hash, name string) (Mem
 
 func (s *Store) MemberByEmail(ctx context.Context, email string) (Member, error) {
 	var m Member
+
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, email, display_name, role, password_hash
+		`SELECT id, email, display_name, role, password_hash, COALESCE(avatar_url, '')
          FROM members WHERE lower(email) = $1`, email).
-		Scan(&m.ID, &m.Email, &m.DisplayName, &m.Role, &m.PasswordHash)
+		Scan(
+			&m.ID,
+			&m.Email,
+			&m.DisplayName,
+			&m.Role,
+			&m.PasswordHash,
+			&m.AvatarPath,
+		)
+
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Member{}, ErrNotFound
 	}
+
 	return m, err
 }
 
 func (s *Store) MemberByID(ctx context.Context, id int64) (Member, error) {
 	var m Member
+
 	err := s.Pool.QueryRow(ctx,
-		`SELECT id, email, display_name, role, created_at::text
+		`SELECT id, email, display_name, role,
+               created_at::text, COALESCE(avatar_url, '')
          FROM members WHERE id = $1`, id).
-		Scan(&m.ID, &m.Email, &m.DisplayName, &m.Role, &m.CreatedAt)
+		Scan(
+			&m.ID,
+			&m.Email,
+			&m.DisplayName,
+			&m.Role,
+			&m.CreatedAt,
+			&m.AvatarPath,
+		)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Member{}, ErrNotFound
@@ -65,9 +86,17 @@ func (s *Store) UpdateMemberProfile(ctx context.Context, memberID int64, email, 
 		`UPDATE members
          SET email = $1, display_name = $2, updated_at = now()
          WHERE id = $3
-         RETURNING id, email, display_name, role, created_at::text`,
+         RETURNING id, email, display_name, role,
+created_at::text, COALESCE(avatar_url, '')`,
 		email, displayName, memberID,
-	).Scan(&m.ID, &m.Email, &m.DisplayName, &m.Role, &m.CreatedAt)
+	).Scan(
+		&m.ID,
+		&m.Email,
+		&m.DisplayName,
+		&m.Role,
+		&m.CreatedAt,
+		&m.AvatarPath,
+	)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Member{}, ErrNotFound
@@ -79,6 +108,50 @@ func (s *Store) UpdateMemberProfile(ctx context.Context, memberID int64, email, 
 	}
 
 	return m, err
+}
+
+func (s *Store) UpdateMemberAvatar(ctx context.Context, memberID int64, newAvatarPath string) (string, error) {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
+	// ดึง Path ของรูปเดิม และล็อกแถวระหว่างทำ Transaction
+	var oldAvatarPath string
+
+	err = tx.QueryRow(ctx,
+		`SELECT COALESCE(avatar_url, '')
+         FROM members WHERE id = $1
+         FOR UPDATE`,
+		memberID,
+	).Scan(&oldAvatarPath)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+
+	// บันทึก Path ของรูปใหม่
+	_, err = tx.Exec(ctx,
+		`UPDATE members
+         SET avatar_url = $1, updated_at = now()
+         WHERE id = $2`,
+		newAvatarPath, memberID,
+	)
+
+	if err != nil {
+		return "", err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
+
+	// ส่ง Path รูปเดิมกลับไปให้ Handler จัดการลบภายหลัง
+	return oldAvatarPath, nil
 }
 
 // ดึง Password Hash ปัจจุบันของสมาชิก

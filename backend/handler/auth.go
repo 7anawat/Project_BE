@@ -78,6 +78,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "BAD_CREDENTIALS", "อีเมลหรือรหัสผ่านไม่ถูกต้อง")
 		return
 	}
+	// สร้าง Signed URL สำหรับรูปโปรไฟล์
+	if err := h.populateAvatarURL(r.Context(), &m); err != nil {
+		internal(w, err)
+		return
+	}
 	token, err := h.Tickets.Issue(m.ID, m.Role)
 	if err != nil {
 		internal(w, err)
@@ -85,4 +90,3 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"token": token, "member": m})
 }
-

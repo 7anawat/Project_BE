@@ -30,7 +30,6 @@ func (h *Handler) UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_JSON", "ข้อมูล JSON ไม่ถูกต้อง")
 		return
 	}
-
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	name := strings.TrimSpace(req.DisplayName)
 
@@ -63,6 +62,10 @@ func (h *Handler) UpdateMyProfile(w http.ResponseWriter, r *http.Request) {
 		return
 
 	case err != nil:
+		internal(w, err)
+		return
+	}
+	if err := h.populateAvatarURL(r.Context(), &member); err != nil {
 		internal(w, err)
 		return
 	}

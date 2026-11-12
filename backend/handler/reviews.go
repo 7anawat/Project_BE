@@ -22,6 +22,10 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		internal(w, err)
 		return
 	}
+	if err := h.populateAvatarURL(r.Context(), &m); err != nil {
+		internal(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, m)
 }
 
@@ -130,4 +134,3 @@ func (h *Handler) RemoveFromWishlist(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
-

@@ -47,7 +47,12 @@ func (c *Client) objectURL(objectPath string) string {
 
 func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("apikey", c.ServiceKey)
-	req.Header.Set("Authorization", "Bearer "+c.ServiceKey)
+
+	// Legacy service_role เป็น JWT จึงส่ง Authorization ได้
+	// Secret Key รูปแบบ sb_secret_ ไม่ใช่ JWT
+	if !strings.HasPrefix(c.ServiceKey, "sb_secret_") {
+		req.Header.Set("Authorization", "Bearer "+c.ServiceKey)
+	}
 }
 
 // Upload uploads a private object to Supabase Storage.
